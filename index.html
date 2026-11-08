@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมเปิดป้ายทายภาพ - สมการเชิงเส้นตัวแปรเดียว </title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Kanit', sans-serif;
+            background-color: #0f172a; 
+            background-image: radial-gradient(#1e293b 2px, transparent 2px);
+            background-size: 30px 30px;
+        }
+
+        /* ระบบ 3D Flip พลิกแผ่นป้าย */
+        .tile-container {
+            perspective: 1000px;
+        }
+        .tile-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+        .tile-front, .tile-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+        }
+        .tile-back {
+            transform: rotateY(180deg);
+        }
+        .is-flipped {
+            transform: rotateY(180deg);
+        }
+
+        /* เอฟเฟกต์แผ่นป้ายเวลาตอบถูก */
+        .tile-vanish {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.9);
+            transition: all 0.5s ease-out;
+        }
+        .tile-hover:hover {
+            filter: brightness(1.15);
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
+        .animate-shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <audio id="sound-correct" src="https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3" preload="auto"></audio>
+    <audio id="sound-wrong" src="https://assets.mixkit.co/active_storage/sfx/2997/2997-preview.mp3" preload="auto"></audio>
+    <audio id="sound-flip" src="https://assets.mixkit.co/active_storage/sfx/2988/2988-preview.mp3" preload="auto"></audio>
+
+    <div id="home-screen" class="w-full max-w-2xl bg-white rounded-3xl shadow-2xl p-8 text-center border-4 border-indigo-500">
+        <h1 class="text-4xl md:text-5xl font-bold text-indigo-700 mb-4 drop-shadow-md">
+            🧩 เปิดป้าย ทายภาพ!
+        </h1>
+        <p class="text-lg md:text-xl text-gray-600 mb-8 font-medium">
+            ดวลสมการเชิงเส้นตัวแปรเดียว (ม.1) - โหมด 25 ป้าย
+        </p>
+        <h2 class="text-2xl font-semibold text-gray-800 mb-6">เลือกหมวดหมู่ภาพปริศนา</h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button onclick="startGame('animals')" class="group relative px-6 py-4 bg-gradient-to-r from-green-400 to-emerald-600 text-white rounded-2xl text-xl font-bold shadow-[0_6px_0_#047857] hover:translate-y-[4px] hover:shadow-[0_2px_0_#047857] transition-all">
+                🦁 หมวดสัตว์
+            </button>
+            <button onclick="startGame('celebs')" class="group relative px-6 py-4 bg-gradient-to-r from-pink-400 to-rose-600 text-white rounded-2xl text-xl font-bold shadow-[0_6px_0_#be123c] hover:translate-y-[4px] hover:shadow-[0_2px_0_#be123c] transition-all">
+                🌟 หมวดดารา
+            </button>
+            <button onclick="startGame('mystery')" class="group relative px-6 py-4 bg-gradient-to-r from-orange-400 to-red-600 text-white rounded-2xl text-xl font-bold shadow-[0_6px_0_#b91c1c] hover:translate-y-[4px] hover:shadow-[0_2px_0_#b91c1c] transition-all">
+                ❓ บุคคลปริศนา
+            </button>
+        </div>
+    </div>
+
+    <div id="game-screen" class="hidden w-full max-w-4xl flex flex-col items-center">
+        <div class="w-full flex justify-between items-center bg-white rounded-2xl p-4 shadow-lg mb-6 border-2 border-indigo-200">
+            <button onclick="goHome()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-xl transition">
+                ⬅️ ออกจากเกม
+            </button>
+            <h2 id="category-title" class="text-2xl font-bold text-indigo-700">หมวดหมู่...</h2>
+            <div class="w-24"></div> 
+        </div>
+
+        <div id="grid-container" class="relative w-full max-w-2xl aspect-square overflow-hidden shadow-[0_0_30px_rgba(79,70,229,0.5)] border-8 border-indigo-900 bg-gray-900 bg-cover bg-center">
+            <!-- ซอยตารางเป็น 5 คอลัมน์ 5 แถว (25 ป้าย) -->
+            <div id="tiles-wrapper" class="absolute inset-0 grid grid-cols-5 grid-rows-5 gap-0 p-0"></div>
+        </div>
+
+        <button onclick="revealAllTiles()" class="mt-8 px-10 py-4 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-full text-2xl font-bold shadow-[0_6px_0_#b45309] hover:translate-y-[4px] hover:shadow-[0_2px_0_#b45309] transition-all">
+            👀 เฉลยภาพทั้งหมด!
+        </button>
+    </div>
+
+    <div id="quiz-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-70 backdrop-blur-md">
+        <div id="modal-content" class="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl p-10 relative border-4 border-indigo-500">
+            <button onclick="closeModal()" class="absolute top-4 right-4 w-12 h-12 bg-gray-100 hover:bg-red-500 hover:text-white rounded-full flex items-center justify-center text-2xl font-bold transition">✕</button>
+
+            <div id="modal-alert" class="hidden text-center text-white font-bold text-2xl mb-4 py-3 bg-red-600 rounded-xl shadow-inner">
+                ❌ ผิดครับ! ป้ายนี้ถูกล็อกแล้ว
+            </div>
+
+            <div class="text-center mb-10">
+                <span class="inline-block bg-indigo-100 text-indigo-700 px-5 py-2 rounded-full font-bold text-sm mb-6 uppercase tracking-wider">
+                    แก้สมการเพื่อเปิดป้าย
+                </span>
+                <h3 id="question-text" class="text-5xl font-black text-gray-800 tracking-wider">โจทย์</h3>
+            </div>
+
+            <div class="grid grid-cols-2 gap-6">
+                <button id="choice-1" onclick="checkAnswer(1)" class="py-6 bg-gradient-to-b from-indigo-50 to-indigo-100 hover:from-indigo-500 hover:to-indigo-600 hover:text-white border-2 border-indigo-300 hover:border-indigo-600 text-indigo-800 text-3xl font-bold rounded-2xl transition-all shadow-md transform hover:scale-105">
+                    ตัวเลือก 1
+                </button>
+                <button id="choice-2" onclick="checkAnswer(2)" class="py-6 bg-gradient-to-b from-indigo-50 to-indigo-100 hover:from-indigo-500 hover:to-indigo-600 hover:text-white border-2 border-indigo-300 hover:border-indigo-600 text-indigo-800 text-3xl font-bold rounded-2xl transition-all shadow-md transform hover:scale-105">
+                    ตัวเลือก 2
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const categoryData = {
+            animals: { title: "🦁 หมวดสัตว์", image: "bird.jpg" }, // เปลี่ยนชื่อไฟล์ให้ตรงกับในเครื่อง
+            celebs: { title: "🌟 หมวดดารา", image: "nadat.jpg" },
+            mystery: { title: "❓ บุคคลปริศนา", image: "poao.png" }
+        };
+
+        // โจทย์สมการ 25 ข้อ สำหรับ 25 แผ่นป้าย
+        const allQuestions = [
+            { q: "x + 5 = 12", choices: ["x = 7", "x = 8"], answer: "x = 7" },
+            { q: "x - 3 = 7", choices: ["x = 10", "x = 4"], answer: "x = 10" },
+            { q: "4x = 20", choices: ["x = 5", "x = 6"], answer: "x = 5" },
+            { q: "x / 2 = 4", choices: ["x = 8", "x = 2"], answer: "x = 8" },
+            { q: "x + 10 = 25", choices: ["x = 15", "x = 20"], answer: "x = 15" },
+            { q: "7 - x = 2", choices: ["x = 5", "x = 9"], answer: "x = 5" },
+            { q: "3x = 18", choices: ["x = 6", "x = 9"], answer: "x = 6" },
+            { q: "x / 5 = 3", choices: ["x = 15", "x = 8"], answer: "x = 15" },
+            { q: "2x + 4 = 14", choices: ["x = 5", "x = 6"], answer: "x = 5" },
+            { q: "3x - 5 = 10", choices: ["x = 5", "x = -5"], answer: "x = 5" },
+            { q: "x/2 + 3 = 8", choices: ["x = 10", "x = 5"], answer: "x = 10" },
+            { q: "5x + 2 = 17", choices: ["x = 3", "x = 5"], answer: "x = 3" },
+            { q: "4x - 6 = 10", choices: ["x = 4", "x = 16"], answer: "x = 4" },
+            { q: "2x - 1 = 9", choices: ["x = 5", "x = 4"], answer: "x = 5" },
+            { q: "2(x - 1) = 8", choices: ["x = 5", "x = 3"], answer: "x = 5" },
+            { q: "(x + 3)/2 = 6", choices: ["x = 9", "x = 3"], answer: "x = 9" },
+            // --- โจทย์ที่เพิ่มมาใหม่ 9 ข้อ ---
+            { q: "2x + 5 = 15", choices: ["x = 5", "x = 10"], answer: "x = 5" },
+            { q: "x/3 - 2 = 4", choices: ["x = 18", "x = 6"], answer: "x = 18" },
+            { q: "5 - x = 12", choices: ["x = -7", "x = 7"], answer: "x = -7" },
+            { q: "3(x + 2) = 15", choices: ["x = 3", "x = 5"], answer: "x = 3" },
+            { q: "4x - 8 = 0", choices: ["x = 2", "x = 4"], answer: "x = 2" },
+            { q: "2(x + 1) = x + 5", choices: ["x = 3", "x = 4"], answer: "x = 3" },
+            { q: "x/4 + 1 = 3", choices: ["x = 8", "x = 2"], answer: "x = 8" },
+            { q: "6x = 3x + 12", choices: ["x = 4", "x = 3"], answer: "x = 4" },
+            { q: "-2x = 10", choices: ["x = -5", "x = 5"], answer: "x = -5" }
+        ];
+
+        let currentActiveTileIndex = -1; 
+        let gameQuestions = []; 
+
+        function playAudio(id) {
+            const audio = document.getElementById(id);
+            audio.currentTime = 0;
+            audio.play().catch(e => console.log("Audio play blocked by browser:", e));
+        }
+
+        function shuffleArray(array) {
+            let newArray = [...array];
+            for (let i = newArray.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+            }
+            return newArray;
+        }
+
+        function startGame(categoryKey) {
+            document.getElementById('home-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+
+            const category = categoryData[categoryKey];
+            document.getElementById('category-title').innerText = category.title;
+            document.getElementById('grid-container').style.backgroundImage = `url('${category.image}')`;
+
+            gameQuestions = shuffleArray(allQuestions);
+            const wrapper = document.getElementById('tiles-wrapper');
+            wrapper.innerHTML = ''; 
+            
+            // เปลี่ยน Loop สร้างแผ่นป้ายเป็น 25 แผ่น
+            for (let i = 0; i < 25; i++) {
+                const tileContainer = document.createElement('div');
+                tileContainer.id = `tile-container-${i}`;
+                tileContainer.className = "tile-container relative w-full h-full";
+
+                const tileInner = document.createElement('div');
+                tileInner.id = `tile-inner-${i}`;
+                tileInner.className = "tile-inner";
+
+                const front = document.createElement('div');
+                front.id = `tile-front-${i}`;
+                // ปรับขนาดฟอนต์หน้าป้ายเป็น text-4xl เพื่อให้พอดีช่อง
+                front.className = "tile-front bg-gradient-to-br from-indigo-500 to-purple-700 text-white flex items-center justify-center text-4xl font-bold border border-indigo-400 cursor-pointer tile-hover select-none";
+                front.innerText = i + 1;
+                front.onclick = () => openQuestion(i);
+
+                const back = document.createElement('div');
+                // ปรับขนาดฟอนต์ด้านหลังเป็น text-2xl
+                back.className = "tile-back bg-black text-red-600 flex items-center justify-center text-2xl font-black border-2 border-gray-900";
+                back.innerText = "❌ ผิด";
+
+                tileInner.appendChild(front);
+                tileInner.appendChild(back);
+                tileContainer.appendChild(tileInner);
+                wrapper.appendChild(tileContainer);
+            }
+        }
+
+        function openQuestion(tileIndex) {
+            currentActiveTileIndex = tileIndex;
+            const questionData = gameQuestions[tileIndex];
+            document.getElementById('question-text').innerText = questionData.q;
+            
+            let choices = shuffleArray([...questionData.choices]);
+            
+            const btn1 = document.getElementById('choice-1');
+            btn1.innerText = choices[0];
+            btn1.dataset.value = choices[0]; 
+            
+            const btn2 = document.getElementById('choice-2');
+            btn2.innerText = choices[1];
+            btn2.dataset.value = choices[1];
+
+            document.getElementById('modal-alert').classList.add('hidden');
+            document.getElementById('modal-content').classList.remove('border-red-600', 'animate-shake');
+            document.getElementById('modal-content').classList.add('border-indigo-500');
+            document.getElementById('quiz-modal').classList.remove('hidden');
+        }
+
+        function checkAnswer(buttonNumber) {
+            const btn = document.getElementById(`choice-${buttonNumber}`);
+            const selectedAnswer = btn.dataset.value;
+            const correctAnswer = gameQuestions[currentActiveTileIndex].answer;
+
+            if (selectedAnswer === correctAnswer) {
+                playAudio('sound-correct');
+                const tileContainer = document.getElementById(`tile-container-${currentActiveTileIndex}`);
+                tileContainer.classList.add('tile-vanish');
+                closeModal();
+            } else {
+                playAudio('sound-wrong');
+                const modalContent = document.getElementById('modal-content');
+                modalContent.classList.remove('animate-shake');
+                void modalContent.offsetWidth; 
+                modalContent.classList.add('animate-shake');
+                modalContent.classList.remove('border-indigo-500');
+                modalContent.classList.add('border-red-600');
+                document.getElementById('modal-alert').classList.remove('hidden');
+
+                setTimeout(() => {
+                    closeModal();
+                    playAudio('sound-flip');
+                    
+                    const inner = document.getElementById(`tile-inner-${currentActiveTileIndex}`);
+                    inner.classList.add('is-flipped');
+                    
+                    const front = document.getElementById(`tile-front-${currentActiveTileIndex}`);
+                    front.onclick = null;
+                    front.classList.remove('cursor-pointer', 'tile-hover');
+                }, 1200); 
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('quiz-modal').classList.add('hidden');
+            currentActiveTileIndex = -1;
+        }
+
+        function revealAllTiles() {
+            playAudio('sound-correct');
+            // เปลี่ยน Loop เฉลยป้ายเป็น 25 แผ่น
+            for (let i = 0; i < 25; i++) {
+                const tileContainer = document.getElementById(`tile-container-${i}`);
+                if (tileContainer && !tileContainer.classList.contains('tile-vanish')) {
+                    tileContainer.classList.add('tile-vanish');
+                }
+            }
+        }
+
+        function goHome() {
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('home-screen').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
